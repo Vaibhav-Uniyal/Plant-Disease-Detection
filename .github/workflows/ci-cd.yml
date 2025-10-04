@@ -42,7 +42,7 @@ jobs:
 
     # Pull model from S3 using default DVC remote
     - name: Pull model from S3 via DVC
-      run: dvc pull
+      run: dvc pull -r s3remote
 
     # Log in to Docker Hub
     - name: Log in to Docker Hub
