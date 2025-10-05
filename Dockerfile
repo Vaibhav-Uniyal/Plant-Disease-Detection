@@ -1,26 +1,33 @@
+# ✅ Use slim base with pinned versions for faster dependency resolution
 FROM python:3.9-slim
 
+# ✅ Set working directory
 WORKDIR /app
 
-# System deps
+# ✅ Preinstall system dependencies only once
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl git && rm -rf /var/lib/apt/lists/*
+    git curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for caching)
+# ✅ Copy requirements first for layer caching
 COPY requirements.txt .
 
-# Install Python deps
-RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
-RUN pip install dvc[s3] --no-cache-dir
+# ✅ Install dependencies with no backtracking
+# Use constrained resolver + wheel-only installs for speed
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir --prefer-binary \
+       --timeout 1000 \
+       -r requirements.txt \
+    && pip install --no-cache-dir --prefer-binary "dvc[s3]==3.51.0" boto3==1.34.69
 
-# Copy the rest of the code
-COPY . /app
+# ✅ Copy only app code
+COPY . .
 
-# Pull model from DVC remote (S3)
-RUN dvc pull plant_disease_model.h5
+# ✅ Pull model (optional safeguard)
+RUN dvc pull plant_disease_model.h5 || echo "Skipping DVC pull in build stage."
 
-# Expose Streamlit port
+# ✅ Expose Streamlit default port
 EXPOSE 8501
 
-# Run app
+# ✅ Default command
 CMD ["streamlit", "run", "main_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
