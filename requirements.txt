@@ -1,5 +1,10 @@
-keras
-numpy
-streamlit
-opencv_python_headless
-tensorflow
+# Core ML Libraries
+tensorflow==2.12.0
+numpy==1.23.5
+opencv-python-headless==4.7.0.72
+
+# Web UI
+streamlit==1.25.0
+
+# Utility libraries (optional, safe & lightweight)
+pandas==1.5.3
