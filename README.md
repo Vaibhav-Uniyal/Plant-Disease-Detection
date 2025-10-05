@@ -1,62 +1,45 @@
-# Plant 🌱 Disease 🐛 Detection 🔎
+# Plant Disease Detection - MLOps Project 🌱
 
-Plant Disease Detection is an innovative machine learning project that harnesses the power of Convolutional Neural Networks (CNN) and deep learning techniques to identify and classify diseases in plants. The primary objective is to offer farmers and agricultural experts a valuable tool for swift plant health diagnosis, facilitating timely intervention and minimizing the risk of crop loss.
+A machine learning project for detecting plant diseases using CNN with complete MLOps pipeline implementation.
 
-[**Live Demo**](https://saurabhsinghdhami-plant-disease-detection-main-app-p8d5ks.streamlit.app/)
+## What We Built
 
-## Project Structure 📂
+- **ML Model**: CNN model to detect plant diseases (Tomato Bacterial Spot, Potato Early Blight, Corn Common Rust)
+- **Web App**: Streamlit interface for image upload and prediction
+- **Docker Container**: Fully containerized application
+- **CI/CD Pipeline**: Automated build and deployment using GitHub Actions
+- **Model Versioning**: DVC integration for model tracking
 
-The project comprises essential components:
+## Quick Start - Run with Docker
 
-- `Plant_Disease_Detection.ipynb`: Jupyter Notebook with the code for model training.
-- `main_app.py`: Streamlit web application for plant disease prediction.
-- `plant_disease_model.h5`: Pre-trained model weights.
-- `requirements.txt`: List of necessary Python packages.
-
-## Installation 🚀
-
-To run the project locally, follow these steps:
-
-1. **Clone the repository:**
-
+### Pull and Run the Container
 ```bash
-git clone https://github.com/SAURABHSINGHDHAMI/Plant-Disease-Detection.git
+# Pull the image from Docker Hub
+docker pull venom1510/plant-disease-detector:latest
+
+# Run the container
+docker run -p 8501:8501 venom1510/plant-disease-detector:latest
+
+# Open browser: http://localhost:8501
 ```
 
-2. Navigate to the project directory:
-
+### Run in Background
 ```bash
-cd Plant-Disease-Detection
+docker run -d -p 8501:8501 --name plant-disease-app venom1510/plant-disease-detector:latest
 ```
 
-3. **Install the required packages:**
+## Local Development
 
 ```bash
+# Clone repo
+git clone <your-repo-url>
+cd mlops_project
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-4. **Run the Streamlit web application:**
-
-```bash
+# Run locally
 streamlit run main_app.py
 ```
 
-## Usage 🌿
-
-Once the application is running, open your web browser and navigate to [http://localhost:8501](http://localhost:8501). Upload an image of a plant leaf, and the system will predict if it is affected by any disease.
-
-## Model Training 🧠
-
-The model was trained using the `Plant_Disease_Detection.ipynb` notebook. It employs a Convolutional Neural Network architecture to classify plant images into different disease categories. The trained model weights are saved in `plant_disease_model.h5`.
-
-## Web Application 🌐
-
-The web application (`main_app.py`) empowers users to interact with the trained model. Upload plant images, and the application provides real-time predictions regarding the health of the plant.
-
-## Requirements 🛠️
-
-- Keras==2.8.0
-- numpy==1.21.4
-- streamlit==1.18.0
-- opencv-python-headless==4.5.3
-- tensorflow==2.7.0
+## Project Structure
