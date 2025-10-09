@@ -188,7 +188,8 @@ def train_model(params):
     # Save model
     model_path = params['paths']['model_output']
     print(f"\nSaving model to {model_path}...")
-    model.save(model_path)
+    # Save with compatible format
+    model.save(model_path, save_format='h5', include_optimizer=False)
     
     # Save metrics
     metrics = {

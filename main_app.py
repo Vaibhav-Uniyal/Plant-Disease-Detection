@@ -5,11 +5,11 @@ import cv2
 from keras.models import load_model
 import tensorflow as tf
 
-# Loading the Model
-model = load_model('plant_disease_model.h5')
+# Loading the Model (with compile=False for compatibility)
+model = load_model('plant_disease_model.h5', compile=False)
                     
-# Name of Classes
-CLASS_NAMES = ('Tomato-Bacterial_spot', 'Potato-Barly blight', 'Corn-Common_rust')
+# Name of Classes (Updated for Potato Disease Model)
+CLASS_NAMES = ('Potato___Early_blight', 'Potato___Late_blight', 'Potato___healthy')
 
 # Setting Title of App
 st.title("Plant Disease Detection")
