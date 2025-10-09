@@ -74,7 +74,7 @@ jobs:
     - name: Pull model from S3 via DVC
       run: |
         echo "Pulling model from S3..."
-        dvc pull plant_disease_model.h5.dvc
+        dvc pull
         ls -lh plant_disease_model.h5
         echo "✅ Model pulled successfully"
 
