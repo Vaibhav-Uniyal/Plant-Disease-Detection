@@ -70,10 +70,13 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Pull model from S3 using DVC (optional)
+    # Pull model from S3 using DVC (REQUIRED)
     - name: Pull model from S3 via DVC
       run: |
-        dvc pull -r s3remote || echo "Skipping DVC pull - model will be downloaded at runtime"
+        echo "Pulling model from S3..."
+        dvc pull plant_disease_model.h5.dvc
+        ls -lh plant_disease_model.h5
+        echo "✅ Model pulled successfully"
 
     # Build and push Docker image (now authenticated)
     - name: Build and push Docker image
