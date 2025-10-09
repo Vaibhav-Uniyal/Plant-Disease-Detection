@@ -74,9 +74,24 @@ jobs:
     - name: Pull model from S3 via DVC
       run: |
         echo "Pulling model from S3..."
-        dvc pull
-        ls -lh plant_disease_model.h5
-        echo "✅ Model pulled successfully"
+        echo "DVC remote config:"
+        dvc remote list
+        
+        # Pull model (DVC handles chunked files automatically)
+        dvc pull -v
+        
+        # Verify model file exists and has correct size
+        if [ -f plant_disease_model.h5 ]; then
+          MODEL_SIZE=$(stat -f%z plant_disease_model.h5 2>/dev/null || stat -c%s plant_disease_model.h5 2>/dev/null)
+          echo "✅ Model pulled successfully"
+          echo "   Size: $MODEL_SIZE bytes (~$(($MODEL_SIZE / 1024 / 1024))MB)"
+          ls -lh plant_disease_model.h5
+        else
+          echo "❌ Model file not found after pull"
+          echo "Checking DVC cache:"
+          dvc status
+          exit 1
+        fi
 
     # Build and push Docker image (now authenticated)
     - name: Build and push Docker image
