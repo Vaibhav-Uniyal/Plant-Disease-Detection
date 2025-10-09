@@ -1,0 +1,44 @@
+# Hyperparameters for Plant Disease Detection Model
+# This file defines all configurable parameters for training experiments
+
+# Data configuration
+data:
+  dataset_path: PlantVillage
+  classes:
+  - Potato___Early_blight
+  - Potato___Late_blight
+  - Potato___healthy
+  image_size: 256  # Image dimensions (width and height)
+  test_split: 0.2  # 20% for testing
+  validation_split: 0.2  # 20% of training for validation
+  random_seed: 42
+
+# Model architecture
+model:
+  input_shape:
+  - 256
+  - 256
+  - 3
+  conv_filters:                # Number of filters in conv layers
+  - 32
+  - 64
+  - 128
+  dense_units: 512  # Units in dense layer
+  dropout_rate: 0.5  # Dropout for regularization
+  activation: relu
+  output_activation: softmax
+
+# Training configuration
+training:
+  epochs: 25
+  batch_size: 32
+  learning_rate: 0.001
+  optimizer: adam
+  loss: categorical_crossentropy
+  metrics:
+  - accuracy
+paths:
+  model_output: plant_disease_model.h5
+  metrics_output: metrics.json
+  plots_output: plots/
+
