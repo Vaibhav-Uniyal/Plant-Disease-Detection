@@ -10,8 +10,8 @@ stages:
       nfiles: 2152
     - path: train.py
       hash: md5
-      md5: b57f253e6385b4c230f05e4331579645
-      size: 8264
+      md5: efcf973d54591b66c34c003a256e3d81
+      size: 8342
       isexec: true
     params:
       params.yaml:
@@ -53,16 +53,16 @@ stages:
     outs:
     - path: metrics.json
       hash: md5
-      md5: 8a40a90f36a64db2019e846e66a4a2a6
-      size: 398
+      md5: 038d08be39d142c6f34102de6daf5ac7
+      size: 399
       isexec: true
     - path: plant_disease_model.h5
       hash: md5
-      md5: ac59d9df5e278b054e7f8a23bc22e621
-      size: 348020088
+      md5: 7eb5b18c1dbacedd5e9acadbbe900ae4
+      size: 116034688
       isexec: true
     - path: plots/
       hash: md5
-      md5: 076decea7ec0721ea7bbd31c536dab39.dir
-      size: 95834
+      md5: 73a5586f7ab6e384491da4bb3d7d286d.dir
+      size: 94875
       nfiles: 1
