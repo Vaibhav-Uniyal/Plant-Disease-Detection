@@ -34,4 +34,8 @@ Thumbs.db
 # Credentials (IMPORTANT!)
 *.csv
 *accessKeys*
+
+# Model files (should be in DVC, not Git)
 /plant_disease_model.h5
+/plant_disease_model_keras3.keras
+*.keras
