@@ -7,6 +7,7 @@ WORKDIR /app
 # Install system dependencies in one layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
@@ -21,13 +22,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # Install Python dependencies with specific optimizations
-RUN pip install --upgrade pip==23.3.1 setuptools==68.2.2 wheel==0.41.2 \
+RUN pip install --upgrade pip==24.0 setuptools==69.0.3 wheel==0.42.0 \
     && pip install --no-cache-dir --prefer-binary \
        --timeout 300 \
        --retries 3 \
        -r requirements.txt
 
-# Install DVC and boto3 separately to avoid conflicts
+# Install DVC and boto3 separately to avoid conflicts (not needed in runtime, but keep for completeness)
 RUN pip install --no-cache-dir --prefer-binary \
     "dvc[s3]==3.51.0" \
     "boto3==1.34.69" \

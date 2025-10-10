@@ -1,1 +1,37 @@
+# Model files (tracked by DVC)
+
+# Dataset (will be tracked by DVC)
+/PlantVillage
+
+# DVC cache
+/.dvc/cache
+
+# Training outputs
+/metrics.json
+/plots/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials (IMPORTANT!)
+*.csv
+*accessKeys*
 /plant_disease_model.h5
