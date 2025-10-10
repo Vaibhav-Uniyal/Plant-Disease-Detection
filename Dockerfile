@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # Install Python dependencies with specific optimizations
-RUN pip install --upgrade pip==24.0 setuptools==69.0.3 wheel==0.42.0 \
+RUN pip install --upgrade pip==24.0 setuptools==69.1.1 wheel==0.43.0 \
     && pip install --no-cache-dir --prefer-binary \
        --timeout 300 \
        --retries 3 \
