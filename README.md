@@ -279,7 +279,8 @@ docker run -d -p 8501:8501 --name plant-disease-detector-app venom1510/pl
 ant-disease-detector:latest
 
 # Stop
-docker stop plant-app && docker rm plant-app
+docker stop plant-disease-detector-app && docker rm plant-disease-detecto
+r-app
 ```
 
 ### Environment Variables
@@ -467,4 +468,5 @@ This project is created for educational and portfolio purposes.
 ---
 
 **🌱 Ready to detect plant diseases with MLOps! 🚀**
+
 
