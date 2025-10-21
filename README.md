@@ -275,7 +275,8 @@ See `EXPERIMENTS.md` for detailed results.
 docker pull venom1510/plant-disease-detector:latest
 
 # Run
-docker run -d -p 8501:8501 --name plant-app venom1510/plant-disease-detector:latest
+docker run -d -p 8501:8501 --name plant-disease-detector-app venom1510/pl
+ant-disease-detector:latest
 
 # Stop
 docker stop plant-app && docker rm plant-app
@@ -357,7 +358,8 @@ Push to S3 (DVC)
 
 ```bash
 # Port already in use
-docker run -p 8502:8501 venom1510/plant-disease-detector:latest
+docker run -d -p 8501:8501 --name plant-disease-detector-app venom1510/pl
+ant-disease-detector:latest
 
 # Container not starting
 docker logs plant-disease-app
@@ -465,3 +467,4 @@ This project is created for educational and portfolio purposes.
 ---
 
 **🌱 Ready to detect plant diseases with MLOps! 🚀**
+
