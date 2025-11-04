@@ -67,9 +67,8 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
         registry: docker.io
 
-    # Set up Docker Buildx (after logins so it picks up credentials)
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    # Note: We're NOT using Buildx to avoid credential scope issues
+    # Standard Docker will be used for all operations
 
     # Pull model from S3 using DVC (REQUIRED)
     - name: Pull model from S3 via DVC
@@ -102,17 +101,12 @@ jobs:
         cat ~/.docker/config.json | grep -A 2 "ecr" || echo "No ECR entry found"
         cat ~/.docker/config.json | grep -A 2 "docker.io" || echo "No Docker Hub entry found"
 
-    # Build Docker image once (save to local Docker, don't push yet)
+    # Build Docker image using standard Docker (not Buildx to avoid credential scope issues)
     - name: Build Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: false
-        load: true
-        tags: plant-disease-detector:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64
+      run: |
+        echo "🔨 Building Docker image..."
+        docker build -t plant-disease-detector:latest .
+        echo "✅ Image built successfully"
 
     # Tag and push to Docker Hub
     - name: Tag and push to Docker Hub
@@ -126,13 +120,7 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
         echo "✅ Docker Hub push complete!"
 
-    # Login to Amazon ECR right before push (ensures fresh token)
-    - name: Login to Amazon ECR
-      if: env.ECR_REPOSITORY != ''
-      uses: aws-actions/amazon-ecr-login@v2
-      id: ecr-login
-
-    # Tag and push to ECR
+    # Tag and push to ECR (using standard Docker, no Buildx)
     - name: Tag and push to ECR
       if: env.ECR_REPOSITORY != ''
       run: |
@@ -140,32 +128,29 @@ jobs:
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         
-        # Check if ECR credentials exist, if not use explicit login
-        echo "🔐 Checking ECR credentials..."
+        # Login to ECR using standard Docker (explicit login, no Buildx)
+        echo "🔐 Logging in to ECR..."
         ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        echo "ECR Registry: $ECR_REGISTRY"
+        echo "AWS Region: ${{ secrets.AWS_REGION }}"
         
-        if [ -f ~/.docker/config.json ] && grep -q "$ECR_REGISTRY" ~/.docker/config.json; then
-          echo "✅ ECR credentials found in Docker config"
-        else
-          echo "⚠️  ECR credentials not found, logging in explicitly..."
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-            docker login --username AWS --password-stdin $ECR_REGISTRY
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ Explicit ECR login successful"
-          else
-            echo "❌ Failed to login to ECR"
-            exit 1
-          fi
+        # Get login password and login (standard Docker command)
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        if [ $? -ne 0 ]; then
+          echo "❌ ECR login failed"
+          echo "Troubleshooting:"
+          echo "  1. Check AWS credentials: aws sts get-caller-identity"
+          echo "  2. Check IAM permissions for ECR"
+          echo "  3. Verify region: ${{ secrets.AWS_REGION }}"
+          exit 1
         fi
         
+        echo "✅ ECR login successful"
+        
         echo "🚀 Pushing to ECR..."
-        docker push ${{ env.ECR_REPOSITORY }}:latest || {
-          echo "⚠️  First push attempt failed, trying explicit login and retry..."
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-            docker login --username AWS --password-stdin $ECR_REGISTRY
-          docker push ${{ env.ECR_REPOSITORY }}:latest
-        }
+        docker push ${{ env.ECR_REPOSITORY }}:latest
         docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         echo "✅ ECR push complete!"
 
