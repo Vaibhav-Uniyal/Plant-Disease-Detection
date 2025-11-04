@@ -59,11 +59,24 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Login to Amazon ECR using official action (before Buildx)
+    # Login to Amazon ECR using AWS CLI (as per AWS documentation)
     - name: Login to Amazon ECR
       if: env.ECR_REPOSITORY != ''
-      uses: aws-actions/amazon-ecr-login@v2
-      id: ecr-login
+      run: |
+        # Extract registry from repository URI
+        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        echo "Logging in to ECR registry: $ECR_REGISTRY"
+        
+        # Login using AWS CLI (exactly as AWS recommends)
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ ECR login successful"
+        else
+          echo "❌ ECR login failed"
+          exit 1
+        fi
 
     # Log in to Docker Hub
     - name: Log in to Docker Hub
