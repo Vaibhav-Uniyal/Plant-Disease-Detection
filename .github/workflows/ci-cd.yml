@@ -120,13 +120,7 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
         echo "✅ Docker Hub push complete!"
 
-    # Login to Amazon ECR (using official action)
-    - name: Login to Amazon ECR
-      if: env.ECR_REPOSITORY != ''
-      uses: aws-actions/amazon-ecr-login@v2
-      id: ecr-login
-
-    # Tag and push to ECR (push immediately after login)
+    # Tag and push to ECR (using manual login - more reliable than action)
     - name: Tag and push to ECR
       if: env.ECR_REPOSITORY != ''
       run: |
@@ -134,31 +128,39 @@ jobs:
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         
-        echo "🚀 Pushing to ECR (using credentials from login step)..."
+        # Extract registry from URI
+        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        echo "ECR Registry: $ECR_REGISTRY"
+        echo "AWS Region: ${{ secrets.AWS_REGION }}"
         
-        # Try pushing directly (ECR login action should have set credentials)
-        if docker push ${{ env.ECR_REPOSITORY }}:latest 2>&1 && \
-           docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }} 2>&1; then
-          echo "✅ ECR push complete!"
-        else
-          echo "⚠️  Push failed, attempting manual login and retry..."
-          ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
-          
-          # Manual login as fallback
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-            docker login --username AWS --password-stdin $ECR_REGISTRY
-          
-          if [ $? -ne 0 ]; then
-            echo "❌ Manual ECR login failed"
-            echo "Check IAM permissions: ecr:GetAuthorizationToken"
-            exit 1
-          fi
-          
-          echo "✅ Manual login successful, retrying push..."
-          docker push ${{ env.ECR_REPOSITORY }}:latest
-          docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          echo "✅ ECR push complete!"
+        # Verify AWS credentials
+        echo "🔍 Verifying AWS credentials..."
+        aws sts get-caller-identity
+        
+        # Login to ECR using manual method (more reliable)
+        echo "🔐 Logging in to ECR..."
+        # Use the exact AWS CLI command format that works
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+        
+        if [ $? -ne 0 ]; then
+          echo "❌ ECR login failed"
+          echo ""
+          echo "Troubleshooting:"
+          echo "1. Check IAM permissions include: ecr:GetAuthorizationToken"
+          echo "2. Verify registry URL: $ECR_REGISTRY"
+          echo "3. Verify region: ${{ secrets.AWS_REGION }}"
+          echo ""
+          echo "Testing AWS CLI access:"
+          aws ecr describe-repositories --region ${{ secrets.AWS_REGION }} --max-items 1 || echo "Cannot list repositories"
+          exit 1
         fi
+        
+        echo "✅ ECR login successful"
+        echo "🚀 Pushing to ECR..."
+        docker push ${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        echo "✅ ECR push complete!"
 
   # Deploy to EC2 after successful build and push
   deploy-to-ec2:
