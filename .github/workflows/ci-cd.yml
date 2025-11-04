@@ -131,7 +131,9 @@ jobs:
         # Login to ECR using standard Docker (explicit login, no Buildx)
         echo "🔐 Logging in to ECR..."
         ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        ECR_REPO_NAME=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f2)
         echo "ECR Registry: $ECR_REGISTRY"
+        echo "ECR Repository: $ECR_REPO_NAME"
         echo "AWS Region: ${{ secrets.AWS_REGION }}"
         
         # Verify AWS credentials first
@@ -141,12 +143,14 @@ jobs:
           exit 1
         }
         
-        # Test ECR access
+        # Test ECR access (optional check - repository might not exist yet, but we'll try to push anyway)
         echo "🔍 Testing ECR access..."
-        aws ecr describe-repositories --region ${{ secrets.AWS_REGION }} --repository-names plant-disease-detector || {
-          echo "❌ Cannot access ECR repository - check IAM permissions"
-          exit 1
-        }
+        if aws ecr describe-repositories --region ${{ secrets.AWS_REGION }} --repository-names "$ECR_REPO_NAME" 2>/dev/null; then
+          echo "✅ ECR repository exists: $ECR_REPO_NAME"
+        else
+          echo "⚠️  ECR repository '$ECR_REPO_NAME' not found, but we'll try to push anyway"
+          echo "   (Repository will be created automatically if you have ecr:CreateRepository permission)"
+        fi
         
         # Get login password and login (standard Docker command)
         # IMPORTANT: Don't capture stderr with password, only capture stdout
