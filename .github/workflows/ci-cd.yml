@@ -63,11 +63,17 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Login to Amazon ECR (must be before Docker Hub login)
+    # Login to Amazon ECR (explicit login)
     - name: Login to Amazon ECR
       if: env.ECR_REPOSITORY != ''
-      uses: aws-actions/amazon-ecr-login@v2
-      continue-on-error: false
+      run: |
+        echo "Logging in to ECR..."
+        # Extract account ID and region from ECR repository URI
+        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        echo "ECR Registry: $ECR_REGISTRY"
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+        echo "✅ ECR login successful"
 
     # Log in to Docker Hub
     - name: Log in to Docker Hub
