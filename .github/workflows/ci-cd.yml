@@ -120,13 +120,13 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
         echo "✅ Docker Hub push complete!"
 
-    # Login to Amazon ECR (using official action - more reliable)
+    # Login to Amazon ECR (using official action)
     - name: Login to Amazon ECR
       if: env.ECR_REPOSITORY != ''
       uses: aws-actions/amazon-ecr-login@v2
       id: ecr-login
 
-    # Tag and push to ECR (using standard Docker, no Buildx)
+    # Tag and push to ECR (push immediately after login)
     - name: Tag and push to ECR
       if: env.ECR_REPOSITORY != ''
       run: |
@@ -134,36 +134,31 @@ jobs:
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         
-        # Verify ECR login was successful
-        echo "🔍 Verifying ECR login..."
-        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
-        ECR_REPO_NAME=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f2)
-        echo "ECR Registry: $ECR_REGISTRY"
-        echo "ECR Repository: $ECR_REPO_NAME"
+        echo "🚀 Pushing to ECR (using credentials from login step)..."
         
-        # Check if credentials are in Docker config
-        if [ -f ~/.docker/config.json ] && grep -q "$ECR_REGISTRY" ~/.docker/config.json; then
-          echo "✅ ECR credentials found in Docker config"
+        # Try pushing directly (ECR login action should have set credentials)
+        if docker push ${{ env.ECR_REPOSITORY }}:latest 2>&1 && \
+           docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }} 2>&1; then
+          echo "✅ ECR push complete!"
         else
-          echo "⚠️  ECR credentials not found in Docker config"
-          echo "Attempting manual login as fallback..."
+          echo "⚠️  Push failed, attempting manual login and retry..."
+          ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
           
-          # Fallback: manual login
+          # Manual login as fallback
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
             docker login --username AWS --password-stdin $ECR_REGISTRY
           
           if [ $? -ne 0 ]; then
-            echo "❌ Manual ECR login also failed"
+            echo "❌ Manual ECR login failed"
             echo "Check IAM permissions: ecr:GetAuthorizationToken"
             exit 1
           fi
-          echo "✅ Manual ECR login successful"
+          
+          echo "✅ Manual login successful, retrying push..."
+          docker push ${{ env.ECR_REPOSITORY }}:latest
+          docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          echo "✅ ECR push complete!"
         fi
-        
-        echo "🚀 Pushing to ECR..."
-        docker push ${{ env.ECR_REPOSITORY }}:latest
-        docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-        echo "✅ ECR push complete!"
 
   # Deploy to EC2 after successful build and push
   deploy-to-ec2:
