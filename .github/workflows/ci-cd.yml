@@ -59,24 +59,11 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Login to Amazon ECR using AWS CLI (as per AWS documentation)
+    # Login to Amazon ECR using official action
     - name: Login to Amazon ECR
       if: env.ECR_REPOSITORY != ''
-      run: |
-        # Extract registry from repository URI
-        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
-        echo "Logging in to ECR registry: $ECR_REGISTRY"
-        
-        # Login using AWS CLI (exactly as AWS recommends)
-        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin $ECR_REGISTRY
-        
-        if [ $? -eq 0 ]; then
-          echo "✅ ECR login successful"
-        else
-          echo "❌ ECR login failed"
-          exit 1
-        fi
+      uses: aws-actions/amazon-ecr-login@v2
+      id: ecr-login
 
     # Log in to Docker Hub
     - name: Log in to Docker Hub
@@ -121,20 +108,51 @@ jobs:
         cat ~/.docker/config.json | grep -A 2 "ecr" || echo "No ECR entry found"
         cat ~/.docker/config.json | grep -A 2 "docker.io" || echo "No Docker Hub entry found"
 
-    # Build and push Docker image to Docker Hub and ECR
-    - name: Build and push Docker image
+    # Build Docker image once (save to local Docker, don't push yet)
+    - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:latest
-          ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
-          ${{ env.ECR_REPOSITORY }}:latest
-          ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        push: false
+        load: true
+        tags: plant-disease-detector:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64
+
+    # Tag and push to Docker Hub
+    - name: Tag and push to Docker Hub
+      run: |
+        echo "📤 Tagging for Docker Hub..."
+        docker tag plant-disease-detector:latest ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:latest
+        docker tag plant-disease-detector:latest ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
+        
+        echo "🚀 Pushing to Docker Hub..."
+        docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:latest
+        docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
+        echo "✅ Docker Hub push complete!"
+
+    # Tag and push to ECR
+    - name: Tag and push to ECR
+      if: env.ECR_REPOSITORY != ''
+      run: |
+        echo "📤 Tagging for ECR..."
+        docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
+        docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        
+        # Verify ECR login credentials are present
+        echo "🔐 Verifying ECR credentials..."
+        if ! cat ~/.docker/config.json | grep -q "ecr"; then
+          echo "⚠️  ECR credentials not found, re-logging in..."
+          ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
+        fi
+        
+        echo "🚀 Pushing to ECR..."
+        docker push ${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        echo "✅ ECR push complete!"
 
   # Deploy to EC2 after successful build and push
   deploy-to-ec2:
