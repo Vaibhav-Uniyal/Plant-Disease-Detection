@@ -140,17 +140,32 @@ jobs:
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         
-        # Verify ECR login credentials are present (fresh token from login above)
-        echo "🔐 Verifying ECR credentials..."
-        if cat ~/.docker/config.json | grep -q "ecr"; then
-          echo "✅ ECR credentials found (token valid for 12 hours)"
+        # Check if ECR credentials exist, if not use explicit login
+        echo "🔐 Checking ECR credentials..."
+        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
+        
+        if [ -f ~/.docker/config.json ] && grep -q "$ECR_REGISTRY" ~/.docker/config.json; then
+          echo "✅ ECR credentials found in Docker config"
         else
-          echo "❌ ECR credentials not found!"
-          exit 1
+          echo "⚠️  ECR credentials not found, logging in explicitly..."
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Explicit ECR login successful"
+          else
+            echo "❌ Failed to login to ECR"
+            exit 1
+          fi
         fi
         
         echo "🚀 Pushing to ECR..."
-        docker push ${{ env.ECR_REPOSITORY }}:latest
+        docker push ${{ env.ECR_REPOSITORY }}:latest || {
+          echo "⚠️  First push attempt failed, trying explicit login and retry..."
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker push ${{ env.ECR_REPOSITORY }}:latest
+        }
         docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         echo "✅ ECR push complete!"
 
