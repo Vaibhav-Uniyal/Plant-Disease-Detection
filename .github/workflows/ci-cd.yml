@@ -77,27 +77,20 @@ jobs:
         echo "Verifying AWS credentials..."
         aws sts get-caller-identity || (echo "❌ AWS credentials invalid" && exit 1)
         
-        # Get ECR login password
-        echo "Getting ECR login password..."
-        ECR_PASSWORD=$(aws ecr get-login-password --region ${{ secrets.AWS_REGION }} 2>&1)
-        if [ $? -ne 0 ] || [ -z "$ECR_PASSWORD" ]; then
-          echo "❌ Failed to get ECR login password"
-          echo "Error: $ECR_PASSWORD"
-          echo "Check if AWS credentials have ECR permissions"
-          exit 1
-        fi
+        # Get ECR login password and login directly (avoid variable storage issues)
+        echo "Getting ECR login password and logging in..."
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
         
-        # Login to ECR
-        echo "Logging in to Docker registry..."
-        echo "$ECR_PASSWORD" | docker login --username AWS --password-stdin $ECR_REGISTRY 2>&1
         if [ $? -eq 0 ]; then
           echo "✅ ECR login successful"
         else
           echo "❌ ECR login failed"
-          echo "Check:"
-          echo "  1. AWS credentials have ECR permissions"
-          echo "  2. ECR repository exists: ${{ secrets.ECR_REPOSITORY_URI }}"
-          echo "  3. Region is correct: ${{ secrets.AWS_REGION }}"
+          echo "Troubleshooting:"
+          echo "  1. Verify AWS credentials have ECR permissions (ecr:GetAuthorizationToken)"
+          echo "  2. Check ECR repository exists: ${{ secrets.ECR_REPOSITORY_URI }}"
+          echo "  3. Verify region matches: ${{ secrets.AWS_REGION }}"
+          echo "  4. Try manual test: aws ecr get-login-password --region ${{ secrets.AWS_REGION }}"
           exit 1
         fi
 
