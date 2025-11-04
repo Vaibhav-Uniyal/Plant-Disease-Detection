@@ -100,6 +100,14 @@ jobs:
           exit 1
         fi
 
+    # Verify Docker logins are configured
+    - name: Verify Docker logins
+      if: env.ECR_REPOSITORY != ''
+      run: |
+        echo "Checking Docker config..."
+        cat ~/.docker/config.json | grep -A 2 "ecr" || echo "No ECR entry found"
+        cat ~/.docker/config.json | grep -A 2 "docker.io" || echo "No Docker Hub entry found"
+
     # Build and push Docker image to Docker Hub and ECR
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -114,8 +122,6 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64
-      env:
-        DOCKER_CONFIG: ${{ steps.ecr-login.outputs.docker-config }}
 
   # Deploy to EC2 after successful build and push
   deploy-to-ec2:
