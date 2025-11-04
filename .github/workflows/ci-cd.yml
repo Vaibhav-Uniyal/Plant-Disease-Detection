@@ -63,36 +63,11 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Login to Amazon ECR (explicit login)
+    # Login to Amazon ECR using official action
     - name: Login to Amazon ECR
       if: env.ECR_REPOSITORY != ''
-      run: |
-        echo "Logging in to ECR..."
-        # Extract registry from ECR repository URI (format: account.dkr.ecr.region.amazonaws.com/repo)
-        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
-        echo "ECR Registry: $ECR_REGISTRY"
-        echo "AWS Region: ${{ secrets.AWS_REGION }}"
-        
-        # Verify AWS credentials
-        echo "Verifying AWS credentials..."
-        aws sts get-caller-identity || (echo "❌ AWS credentials invalid" && exit 1)
-        
-        # Get ECR login password and login directly (avoid variable storage issues)
-        echo "Getting ECR login password and logging in..."
-        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin $ECR_REGISTRY
-        
-        if [ $? -eq 0 ]; then
-          echo "✅ ECR login successful"
-        else
-          echo "❌ ECR login failed"
-          echo "Troubleshooting:"
-          echo "  1. Verify AWS credentials have ECR permissions (ecr:GetAuthorizationToken)"
-          echo "  2. Check ECR repository exists: ${{ secrets.ECR_REPOSITORY_URI }}"
-          echo "  3. Verify region matches: ${{ secrets.AWS_REGION }}"
-          echo "  4. Try manual test: aws ecr get-login-password --region ${{ secrets.AWS_REGION }}"
-          exit 1
-        fi
+      uses: aws-actions/amazon-ecr-login@v2
+      id: ecr-login
 
     # Log in to Docker Hub
     - name: Log in to Docker Hub
