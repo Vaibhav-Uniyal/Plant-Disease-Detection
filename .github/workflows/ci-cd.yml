@@ -18,6 +18,7 @@ jobs:
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_URI }}
 
     steps:
     # Checkout repo
@@ -70,6 +71,12 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
+    # Login to Amazon ECR
+    - name: Login to Amazon ECR
+      if: env.ECR_REPOSITORY != ''
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
     # Pull model from S3 using DVC (REQUIRED)
     - name: Pull model from S3 via DVC
       run: |
@@ -93,7 +100,7 @@ jobs:
           exit 1
         fi
 
-    # Build and push Docker image (now authenticated)
+    # Build and push Docker image to Docker Hub and ECR
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
@@ -102,6 +109,111 @@ jobs:
         tags: |
           ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:latest
           ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
+          ${{ env.ECR_REPOSITORY }}:latest
+          ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64
+
+  # Deploy to EC2 after successful build and push
+  deploy-to-ec2:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && secrets.ECR_REPOSITORY_URI != '' && secrets.EC2_HOST != ''
+    
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_URI }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key.pem
+        chmod 600 ~/.ssh/ec2_key.pem
+        ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+
+    - name: Deploy to EC2
+      run: |
+        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+          set -e
+          
+          echo "🚀 Starting deployment to EC2..."
+          
+          # Install Docker if not installed
+          if ! command -v docker &> /dev/null; then
+            echo "📦 Installing Docker..."
+            sudo yum update -y
+            sudo yum install docker -y
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -a -G docker $USER
+          fi
+          
+          # Install AWS CLI if not installed
+          if ! command -v aws &> /dev/null; then
+            echo "📦 Installing AWS CLI..."
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+            rm -rf aws awscliv2.zip
+          fi
+          
+          # Login to ECR (works with IAM role or configured credentials)
+          echo "🔐 Logging in to ECR..."
+          if ! aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+            docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY_URI }}; then
+            echo "❌ Failed to login to ECR. Check AWS credentials or IAM role."
+            exit 1
+          fi
+          
+          # Stop and remove old container if it exists
+          if docker ps -a --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
+            echo "🛑 Stopping old container..."
+            docker stop plant-disease-app || true
+            docker rm plant-disease-app || true
+          fi
+          
+          # Pull latest image
+          echo "📥 Pulling latest image from ECR..."
+          docker pull ${{ secrets.ECR_REPOSITORY_URI }}:latest
+          
+          # Run new container
+          echo "🚀 Starting new container..."
+          docker run -d \
+            --name plant-disease-app \
+            -p 8501:8501 \
+            --restart unless-stopped \
+            ${{ secrets.ECR_REPOSITORY_URI }}:latest
+          
+          # Wait a moment for container to start
+          sleep 5
+          
+          # Verify container is running
+          if docker ps --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
+            echo "✅ Deployment successful! Container is running."
+            echo "📊 Container status:"
+            docker ps --filter name=plant-disease-app
+            echo ""
+            echo "🌐 Access your app at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8501"
+          else
+            echo "❌ Container failed to start. Checking logs:"
+            docker logs plant-disease-app
+            exit 1
+          fi
+        EOF
+
+    - name: Deployment Summary
+      run: |
+        echo "✅ Deployment to EC2 completed successfully!"
+        echo "🌐 Access your app at: http://${{ secrets.EC2_HOST }}:8501"
