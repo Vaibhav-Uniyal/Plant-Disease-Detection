@@ -120,6 +120,12 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
         echo "✅ Docker Hub push complete!"
 
+    # Login to Amazon ECR (using official action - more reliable)
+    - name: Login to Amazon ECR
+      if: env.ECR_REPOSITORY != ''
+      uses: aws-actions/amazon-ecr-login@v2
+      id: ecr-login
+
     # Tag and push to ECR (using standard Docker, no Buildx)
     - name: Tag and push to ECR
       if: env.ECR_REPOSITORY != ''
@@ -128,87 +134,31 @@ jobs:
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
         docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
         
-        # Login to ECR using standard Docker (explicit login, no Buildx)
-        echo "🔐 Logging in to ECR..."
+        # Verify ECR login was successful
+        echo "🔍 Verifying ECR login..."
         ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
         ECR_REPO_NAME=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f2)
         echo "ECR Registry: $ECR_REGISTRY"
         echo "ECR Repository: $ECR_REPO_NAME"
-        echo "AWS Region: ${{ secrets.AWS_REGION }}"
         
-        # Verify AWS credentials first
-        echo "🔍 Verifying AWS credentials..."
-        aws sts get-caller-identity || {
-          echo "❌ AWS credentials invalid"
-          exit 1
-        }
-        
-        # Test ECR access (optional check - repository might not exist yet, but we'll try to push anyway)
-        echo "🔍 Testing ECR access..."
-        if aws ecr describe-repositories --region ${{ secrets.AWS_REGION }} --repository-names "$ECR_REPO_NAME" 2>/dev/null; then
-          echo "✅ ECR repository exists: $ECR_REPO_NAME"
+        # Check if credentials are in Docker config
+        if [ -f ~/.docker/config.json ] && grep -q "$ECR_REGISTRY" ~/.docker/config.json; then
+          echo "✅ ECR credentials found in Docker config"
         else
-          echo "⚠️  ECR repository '$ECR_REPO_NAME' not found, but we'll try to push anyway"
-          echo "   (Repository will be created automatically if you have ecr:CreateRepository permission)"
+          echo "⚠️  ECR credentials not found in Docker config"
+          echo "Attempting manual login as fallback..."
+          
+          # Fallback: manual login
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Manual ECR login also failed"
+            echo "Check IAM permissions: ecr:GetAuthorizationToken"
+            exit 1
+          fi
+          echo "✅ Manual ECR login successful"
         fi
-        
-        # Get login password and login (standard Docker command)
-        # IMPORTANT: Don't capture stderr with password, only capture stdout
-        echo "🔐 Getting ECR login password..."
-        set +e  # Don't exit on error yet
-        ECR_PASSWORD=$(aws ecr get-login-password --region ${{ secrets.AWS_REGION }} 2>/dev/null)
-        ECR_PASSWORD_EXIT_CODE=$?
-        set -e  # Re-enable exit on error
-        
-        if [ $ECR_PASSWORD_EXIT_CODE -ne 0 ] || [ -z "$ECR_PASSWORD" ]; then
-          echo "❌ Failed to get ECR login password"
-          echo "Exit code: $ECR_PASSWORD_EXIT_CODE"
-          echo "Checking AWS CLI error..."
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} || true
-          echo ""
-          echo "Check IAM permissions: ecr:GetAuthorizationToken"
-          echo "Required permissions:"
-          echo "  - ecr:GetAuthorizationToken"
-          echo "  - ecr:BatchCheckLayerAvailability"
-          echo "  - ecr:GetDownloadUrlForLayer"
-          echo "  - ecr:BatchGetImage"
-          echo "  - ecr:PutImage"
-          echo "  - ecr:InitiateLayerUpload"
-          echo "  - ecr:UploadLayerPart"
-          echo "  - ecr:CompleteLayerUpload"
-          exit 1
-        fi
-        
-        # Verify password is not empty and looks valid (base64 encoded, long string)
-        if [ ${#ECR_PASSWORD} -lt 100 ]; then
-          echo "❌ ECR password appears invalid (too short)"
-          echo "Password length: ${#ECR_PASSWORD}"
-          exit 1
-        fi
-        
-        echo "✅ ECR password retrieved successfully (length: ${#ECR_PASSWORD})"
-        echo "🔐 Logging in to Docker..."
-        
-        # Login to ECR - ensure password is passed correctly
-        # Use printf instead of echo to avoid any interpretation issues
-        printf '%s' "$ECR_PASSWORD" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-        
-        if [ $? -ne 0 ]; then
-          echo "❌ ECR login failed with 400 Bad Request"
-          echo ""
-          echo "Common causes:"
-          echo "  1. IAM permissions missing: ecr:GetAuthorizationToken"
-          echo "  2. Registry URL incorrect: $ECR_REGISTRY"
-          echo "  3. Region mismatch: Expected ${{ secrets.AWS_REGION }}"
-          echo "  4. Password format issue"
-          echo ""
-          echo "Verify registry URL format:"
-          echo "  Expected: ACCOUNT.dkr.ecr.REGION.amazonaws.com"
-          echo "  Got: $ECR_REGISTRY"
-          exit 1
-        fi
-        
-        echo "✅ ECR login successful"
         
         echo "🚀 Pushing to ECR..."
         docker push ${{ env.ECR_REPOSITORY }}:latest
