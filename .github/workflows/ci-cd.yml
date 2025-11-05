@@ -127,10 +127,31 @@ jobs:
     steps:
     - name: Setup SSH
       run: |
+        set -e
         mkdir -p ~/.ssh
-        echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key.pem
+        # Normalize line endings and write the private key
+        printf '%s' "$EC2_SSH_KEY" | sed 's/\r$//' > ~/.ssh/ec2_key.pem
         chmod 600 ~/.ssh/ec2_key.pem
-        ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+        
+        if [ -z "$EC2_HOST" ] || [ -z "$EC2_USER" ]; then
+          echo "❌ EC2_HOST or EC2_USER is empty. Check repository secrets."
+          exit 1
+        fi
+        
+        echo "🔎 Adding EC2 host key to known_hosts..."
+        # Don't fail the job if keyscan can't reach the host (host might be booting)
+        ssh-keyscan -T 10 -H "$EC2_HOST" >> ~/.ssh/known_hosts || true
+        
+        echo "🔗 Testing SSH connectivity..."
+        if ! ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 "$EC2_USER@$EC2_HOST" 'echo ok' 2>/dev/null; then
+          echo "❌ Unable to SSH to $EC2_USER@$EC2_HOST"
+          echo "Troubleshooting checklist:"
+          echo "- Verify EC2_HOST secret (public IP/DNS may have changed)"
+          echo "- Ensure port 22 is open in the EC2 security group"
+          echo "- Confirm EC2_USER is correct (Amazon Linux: ec2-user; Ubuntu: ubuntu)"
+          echo "- Make sure the private key matches the instance key pair"
+          exit 1
+        fi
 
     - name: Deploy to EC2
       if: env.EC2_HOST != '' && env.EC2_USER != '' && env.EC2_SSH_KEY != ''
