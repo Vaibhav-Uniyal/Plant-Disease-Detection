@@ -172,7 +172,7 @@ jobs:
           echo "Current disk usage: \$DISK_USAGE%"
           
           if [ "\$DISK_USAGE" -gt 80 ]; then
-            echo "⚠️  Disk space is low (\$DISK_USAGE%), cleaning up Docker resources..."
+            echo "⚠️  Disk space is low (\$DISK_USAGE%), cleaning up Docker and system resources..."
             # Remove stopped containers
             \$DOCKER_CMD container prune -f || true
             # Remove unused images (keep the current one)
@@ -181,6 +181,15 @@ jobs:
             \$DOCKER_CMD volume prune -f || true
             # Remove build cache
             \$DOCKER_CMD builder prune -af || true
+            # Stop Docker to clear temp/buildkit dirs if needed
+            sudo systemctl stop docker || true
+            sudo rm -rf /var/lib/docker/tmp/* || true
+            sudo rm -rf /var/lib/docker/buildkit/* || true
+            # Clean OS caches/logs to free space on AL2023
+            sudo dnf clean all -y || true
+            sudo rm -rf /var/cache/dnf || true
+            sudo journalctl --vacuum-time=3d || true
+            sudo systemctl start docker || true
             echo "✅ Cleanup complete"
             DISK_USAGE_AFTER=\$(df -h / | tail -1 | awk '{print \$5}' | sed 's/%//')
             echo "Disk usage after cleanup: \$DISK_USAGE_AFTER%"
