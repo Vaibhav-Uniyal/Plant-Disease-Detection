@@ -18,7 +18,6 @@ jobs:
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_URI }}
 
     steps:
     # Checkout repo
@@ -93,14 +92,6 @@ jobs:
           exit 1
         fi
 
-    # Verify Docker logins are configured
-    - name: Verify Docker logins
-      if: env.ECR_REPOSITORY != ''
-      run: |
-        echo "Checking Docker config..."
-        cat ~/.docker/config.json | grep -A 2 "ecr" || echo "No ECR entry found"
-        cat ~/.docker/config.json | grep -A 2 "docker.io" || echo "No Docker Hub entry found"
-
     # Build Docker image using standard Docker (not Buildx to avoid credential scope issues)
     - name: Build Docker image
       run: |
@@ -120,48 +111,6 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:${{ github.sha }}
         echo "✅ Docker Hub push complete!"
 
-    # Tag and push to ECR (using manual login - more reliable than action)
-    - name: Tag and push to ECR
-      if: env.ECR_REPOSITORY != ''
-      run: |
-        echo "📤 Tagging for ECR..."
-        docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:latest
-        docker tag plant-disease-detector:latest ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-        
-        # Extract registry from URI
-        ECR_REGISTRY=$(echo "${{ secrets.ECR_REPOSITORY_URI }}" | cut -d'/' -f1)
-        echo "ECR Registry: $ECR_REGISTRY"
-        echo "AWS Region: ${{ secrets.AWS_REGION }}"
-        
-        # Verify AWS credentials
-        echo "🔍 Verifying AWS credentials..."
-        aws sts get-caller-identity
-        
-        # Login to ECR using manual method (more reliable)
-        echo "🔐 Logging in to ECR..."
-        # Use the exact AWS CLI command format that works
-        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin $ECR_REGISTRY
-        
-        if [ $? -ne 0 ]; then
-          echo "❌ ECR login failed"
-          echo ""
-          echo "Troubleshooting:"
-          echo "1. Check IAM permissions include: ecr:GetAuthorizationToken"
-          echo "2. Verify registry URL: $ECR_REGISTRY"
-          echo "3. Verify region: ${{ secrets.AWS_REGION }}"
-          echo ""
-          echo "Testing AWS CLI access:"
-          aws ecr describe-repositories --region ${{ secrets.AWS_REGION }} --max-items 1 || echo "Cannot list repositories"
-          exit 1
-        fi
-        
-        echo "✅ ECR login successful"
-        echo "🚀 Pushing to ECR..."
-        docker push ${{ env.ECR_REPOSITORY }}:latest
-        docker push ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-        echo "✅ ECR push complete!"
-
   # Deploy to EC2 after successful build and push
   deploy-to-ec2:
     needs: build-and-deploy
@@ -169,20 +118,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_URI }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
     
     steps:
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-
     - name: Setup SSH
       run: |
         mkdir -p ~/.ssh
@@ -193,8 +135,12 @@ jobs:
     - name: Deploy to EC2
       if: env.EC2_HOST != '' && env.EC2_USER != '' && env.EC2_SSH_KEY != ''
       run: |
-        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
+          
+          DOCKER_USERNAME="${{ secrets.DOCKER_USERNAME }}"
+          DOCKER_PASSWORD="${{ secrets.DOCKER_PASSWORD }}"
+          DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/plant-disease-detector:latest"
           
           echo "🚀 Starting deployment to EC2..."
           
@@ -208,21 +154,10 @@ jobs:
             sudo usermod -a -G docker $USER
           fi
           
-          # Install AWS CLI if not installed
-          if ! command -v aws &> /dev/null; then
-            echo "📦 Installing AWS CLI..."
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip -q awscliv2.zip
-            sudo ./aws/install
-            rm -rf aws awscliv2.zip
-          fi
-          
-          # Login to ECR (works with IAM role or configured credentials)
-          echo "🔐 Logging in to ECR..."
-          if ! aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-            docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY_URI }}; then
-            echo "❌ Failed to login to ECR. Check AWS credentials or IAM role."
-            exit 1
+          # Login to Docker Hub (if credentials provided, for private repos)
+          if [ -n "\$DOCKER_PASSWORD" ]; then
+            echo "🔐 Logging in to Docker Hub..."
+            echo "\$DOCKER_PASSWORD" | docker login --username "\$DOCKER_USERNAME" --password-stdin
           fi
           
           # Stop and remove old container if it exists
@@ -232,9 +167,9 @@ jobs:
             docker rm plant-disease-app || true
           fi
           
-          # Pull latest image
-          echo "📥 Pulling latest image from ECR..."
-          docker pull ${{ secrets.ECR_REPOSITORY_URI }}:latest
+          # Pull latest image from Docker Hub
+          echo "📥 Pulling latest image from Docker Hub..."
+          docker pull "\$DOCKER_IMAGE"
           
           # Run new container
           echo "🚀 Starting new container..."
@@ -242,7 +177,7 @@ jobs:
             --name plant-disease-app \
             -p 8501:8501 \
             --restart unless-stopped \
-            ${{ secrets.ECR_REPOSITORY_URI }}:latest
+            "\$DOCKER_IMAGE"
           
           # Wait a moment for container to start
           sleep 5
