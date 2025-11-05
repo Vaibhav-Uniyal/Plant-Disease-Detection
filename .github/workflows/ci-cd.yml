@@ -200,7 +200,19 @@ jobs:
             echo "📊 Container status:"
             \$DOCKER_CMD ps --filter name=plant-disease-app
             echo ""
-            echo "🌐 Access your app at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8501"
+            
+            # Try to get public IP from metadata service
+            PUBLIC_IP=\$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+            if [ -n "\$PUBLIC_IP" ] && [ "\$PUBLIC_IP" != "" ] && ! echo "\$PUBLIC_IP" | grep -q "Error"; then
+              echo "🌐 Access your app at: http://\$PUBLIC_IP:8501"
+            else
+              echo "🌐 Your app is running on port 8501"
+              echo "   To find your EC2 public IP:"
+              echo "   1. Go to AWS Console → EC2 → Instances"
+              echo "   2. Select your instance"
+              echo "   3. Check 'Public IPv4 address'"
+              echo "   4. Access at: http://<YOUR_PUBLIC_IP>:8501"
+            fi
           else
             echo "❌ Container failed to start. Checking logs:"
             \$DOCKER_CMD logs plant-disease-app
