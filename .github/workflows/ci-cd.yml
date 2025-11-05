@@ -151,29 +151,41 @@ jobs:
             sudo yum install docker -y
             sudo systemctl start docker
             sudo systemctl enable docker
-            sudo usermod -a -G docker $USER
+            # Add current user to docker group (works for ec2-user or any user)
+            CURRENT_USER=\$(whoami)
+            sudo usermod -a -G docker "\$CURRENT_USER"
+            echo "✅ Added user \$CURRENT_USER to docker group"
+            echo "ℹ️  Note: You may need to log out and back in for group changes to take effect"
+            echo "ℹ️  For now, using sudo for docker commands"
+          fi
+          
+          # Use sudo for docker commands if user is not in docker group yet
+          DOCKER_CMD="docker"
+          if ! groups | grep -q docker; then
+            DOCKER_CMD="sudo docker"
+            echo "⚠️  Using sudo for docker commands (group membership takes effect after logout)"
           fi
           
           # Login to Docker Hub (if credentials provided, for private repos)
           if [ -n "\$DOCKER_PASSWORD" ]; then
             echo "🔐 Logging in to Docker Hub..."
-            echo "\$DOCKER_PASSWORD" | docker login --username "\$DOCKER_USERNAME" --password-stdin
+            echo "\$DOCKER_PASSWORD" | \$DOCKER_CMD login --username "\$DOCKER_USERNAME" --password-stdin
           fi
           
           # Stop and remove old container if it exists
-          if docker ps -a --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
+          if \$DOCKER_CMD ps -a --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
             echo "🛑 Stopping old container..."
-            docker stop plant-disease-app || true
-            docker rm plant-disease-app || true
+            \$DOCKER_CMD stop plant-disease-app || true
+            \$DOCKER_CMD rm plant-disease-app || true
           fi
           
           # Pull latest image from Docker Hub
           echo "📥 Pulling latest image from Docker Hub..."
-          docker pull "\$DOCKER_IMAGE"
+          \$DOCKER_CMD pull "\$DOCKER_IMAGE"
           
           # Run new container
           echo "🚀 Starting new container..."
-          docker run -d \
+          \$DOCKER_CMD run -d \
             --name plant-disease-app \
             -p 8501:8501 \
             --restart unless-stopped \
@@ -183,15 +195,15 @@ jobs:
           sleep 5
           
           # Verify container is running
-          if docker ps --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
+          if \$DOCKER_CMD ps --format '{{.Names}}' | grep -q "^plant-disease-app$"; then
             echo "✅ Deployment successful! Container is running."
             echo "📊 Container status:"
-            docker ps --filter name=plant-disease-app
+            \$DOCKER_CMD ps --filter name=plant-disease-app
             echo ""
             echo "🌐 Access your app at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8501"
           else
             echo "❌ Container failed to start. Checking logs:"
-            docker logs plant-disease-app
+            \$DOCKER_CMD logs plant-disease-app
             exit 1
           fi
         EOF
